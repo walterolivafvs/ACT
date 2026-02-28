@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Controle de Acordos de Cooperação Técnica e Convênios</title>
+
+  <!-- libs (compatíveis com GitHub Pages e localhost) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root { --card:#fff; --border:#e7e7e7; --muted:#666; --bg:#fafafa; }
+
+    html { scrollbar-gutter: stable; }
+    body { overflow-y: scroll; }
+
+    body { font-family: Arial, sans-serif; margin: 18px 24px; background:var(--bg); }
+    h3 { margin: 10px 0 10px 0; }
+
+    .topbar{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin: 8px 0 16px 0;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .brand{ display:flex; align-items:center; gap:14px; }
+    .brand-logos{
+      display:flex; align-items:center; gap:12px;
+      padding-right:14px; border-right:1px solid #eee;
+    }
+    .logo{ display:block; height:54px; width:auto; object-fit:contain; }
+    .logo.fvs{ height:48px; }
+    .logo.depi{ height:54px; border-radius:8px; }
+
+    .brand-text .org{ font-size:12px; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin-bottom:2px; display:flex; align-items:center; gap:8px; }
+    .brand-text .title{ margin:0; font-size:30px; line-height:1.15; display:flex; align-items:center; gap:10px; }
+    .brand-text .subtitle{ margin-top:4px; font-size:13px; color:var(--muted); }
+
+    .titleIcon{ width: 24px; height: 24px; flex: 0 0 24px; }
+
+    .layout{ display:flex; gap:14px; align-items:flex-start; }
+    .sidebar{
+      width: 260px;
+      flex: 0 0 260px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      position: sticky;
+      top: 12px;
+      align-self: flex-start;
+    }
+    .sidebar h4{ margin: 6px 0 10px 0; font-size: 14px; }
+    .field{ margin: 10px 0; }
+    .label{ font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .select{
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .main{ flex: 1; min-width: 420px; }
+
+    .cards { display:flex; gap:12px; flex-wrap:wrap; margin: 0 0 18px 0; }
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 220px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .card .kpiLabel { color:var(--muted); font-size:12px; }
+    .card .value { font-size:28px; font-weight:800; margin-top:6px; }
+
+    .row { display:flex; gap:14px; flex-wrap:wrap; }
+    .panel{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      flex: 1;
+      min-width: 380px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    #chart_status, #chart_venc, #chart_map { width:100%; height:320px; }
+
+    .legend-risk {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin: 8px 0 0 0;
+      font-size: 12px;
+      color: #444;
+    }
+    .legend-risk .item { display:flex; align-items:center; gap:6px; }
+    .legend-risk .box {
+      width: 12px; height: 12px; border-radius: 3px; border: 1px solid #ccc; display:inline-block;
+    }
+    .legend-risk .red { background: #d62c26; }
+    .legend-risk .yellow { background: #f59e0b; }
+    .legend-risk .green { background: #16a34a; }
+    .legend-risk .gray { background: #9ca3af; }
+
+    .legend-status{
+      display:flex; gap:14px; flex-wrap:wrap; margin-top: 8px; font-size:12px; color:#444;
+    }
+    .legend-status .item{ display:flex; align-items:center; gap:6px; }
+    .legend-status .box{ width:12px; height:12px; border-radius:3px; border:1px solid #ccc; display:inline-block; }
+    .legend-status .vig{ background:#16a34a; }
+    .legend-status .alt{ background:#f59e0b; }
+    .legend-status .sem{ background:#9ca3af; }
+
+    .legenda{
+      background:#f9f9f9;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:10px 12px;
+      font-size: 12px;
+      color:#444;
+    }
+
+    .toolbar {
+      display:flex;
+      gap:8px;
+      margin: 10px 0 6px 0;
+      align-items: center;
+    }
+    #search{
+      flex: 1;
+      padding: 10px 12px;
+      border:1px solid #ddd;
+      border-radius:10px;
+      font-size: 13px;
+      outline:none;
+      background:#fff;
+    }
+    .btn{
+      border:1px solid #ccc;
+      background:#f5f5f5;
+      border-radius:8px;
+      padding:6px 10px;
+      cursor:pointer;
+      font-size:12px;
+      min-width:84px;
+      white-space: nowrap;
+    }
+    .btn.active {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+    }
+    .filterHint {
+      font-size: 12px;
+      color: #666;
+      margin: 0 0 6px 2px;
+    }
+
+    .tableWrap{
+      margin-top: 8px;
+      border:1px solid #eee;
+      border-radius:12px;
+      overflow:hidden;
+      background:#fff;
+    }
+    .table-scroll{ width: 100%; overflow-x: auto; }
+    .tbl{
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      min-width: 1100px;
+    }
+    .tbl th, .tbl td{
+      border-bottom:1px solid #eee;
+      padding:10px 10px;
+      font-size:13px;
+      line-height:1.25;
+      vertical-align: middle;
+    }
+    .tbl thead th{
+      font-weight:700;
+      background:#fbfbfb;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .tbl tbody tr:nth-child(even) td { background:#fafafa; }
+    .tbl tbody tr:hover td { background:#f1f5ff; }
+
+    .tbl tbody td { text-align:center; white-space: nowrap; }
+
+    .tbl thead th:nth-child(3),
+    .tbl tbody td:nth-child(3){ text-align:left; white-space: normal; }
+
+    .tbl thead th:nth-child(9),
+    .tbl tbody td:nth-child(9){ white-space: normal; word-break: break-word; }
+
+    .detailsRow td{ background:#fff; }
+    .detailsBox{
+      border:1px solid #eee;
+      border-radius:10px;
+      padding:10px;
+      background:#fff;
+      text-align:left;
+    }
+    .kv{ display:grid; grid-template-columns:140px 1fr; gap:6px 10px; margin-bottom:8px; }
+    .k{ color:#444; font-weight:700; }
+    .v{ color:#111; }
+    details{ margin-top:8px; }
+    summary{ cursor:pointer; font-weight:700; }
+    ul{ margin:6px 0 18px; padding-left: 18px; }
+    li{ margin:4px 0; }
+    .muted{ color:#888; }
+
+    @media (max-width: 980px){
+      .layout{ flex-direction: column; }
+      .sidebar{ width: auto; position: relative; top: 0; }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logos">
+        <img class="logo fvs" src="./fvs-logo.png" alt="FVS-RCP" />
+        <img class="logo depi" src="./logo_depi.jpeg" alt="DEPI - FVS-RCP" />
+      </div>
+
+      <div class="brand-text">
+        <div class="org">FVS-RCP • DEPI</div>
+        <h1 class="title">
+          <svg class="titleIcon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 12.5l2 2 5-5" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 4h10a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2-3-2V6a2 2 0 0 1 2-2z" stroke="#111" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Controle de Acordos de Cooperação Técnica e Convênios
+        </h1>
+        <div class="subtitle">Painel de monitoramento de vigência e renovação</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <h4>Filtros</h4>
+
+      <div class="field">
+        <div class="label">Ano de vencimento</div>
+        <select id="filterYear" class="select">
+          <option value="">Todos</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="label">Tipo</div>
+        <select id="filterTipo" class="select">
+          <option value="">Todos</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="label">Instituição</div>
+        <select id="filterInst" class="select">
+          <option value="">Todas</option>
+        </select>
+      </div>
+
+      <!-- ✅ NOVO: filtro por UF -->
+      <div class="field">
+        <div class="label">UF</div>
+        <select id="filterUF" class="select">
+          <option value="">Todas</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="label">Status</div>
+        <select id="filterStatus" class="select">
+          <option value="">Todos</option>
+          <option value="VIGENTE">VIGENTE</option>
+          <option value="ALERTA 180 DIAS">ALERTA 180 DIAS</option>
+          <option value="SEM DATA">SEM DATA</option>
+          <option value="ARQUIVADO">ARQUIVADO</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <button id="resetFilters" class="btn" style="width:100%;">Ver todos</button>
+      </div>
+
+      <div id="filterHint" class="filterHint"></div>
+    </aside>
+
+    <main class="main">
+      <div class="cards">
+        <div class="card">
+          <div class="kpiLabel">Total</div>
+          <div class="value" id="kpi_total">—</div>
+        </div>
+        <div class="card">
+          <div class="kpiLabel">Vigentes</div>
+          <div class="value" id="kpi_vigentes">—</div>
+        </div>
+        <div class="card">
+          <div class="kpiLabel">Alerta (≤180 dias)</div>
+          <div class="value" id="kpi_alerta">—</div>
+        </div>
+        <div class="card">
+          <div class="kpiLabel">Sem data</div>
+          <div class="value" id="kpi_semdata">—</div>
+        </div>
+
+        <!-- ✅ NOVO: KPI Arquivados separado -->
+        <div class="card">
+          <div class="kpiLabel">Arquivados</div>
+          <div class="value" id="kpi_arquivados">—</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="panel">
+          <h3>Status de vigência</h3>
+          <div id="chart_status"></div>
+
+          <div class="legend-status">
+            <div class="item"><span class="box vig"></span><span>VIGENTE</span></div>
+            <div class="item"><span class="box alt"></span><span>ALERTA 180 DIAS</span></div>
+            <div class="item"><span class="box sem"></span><span>SEM DATA</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Vencimentos por mês</h3>
+
+          <div class="legend-risk">
+            <div class="item"><span class="box red"></span><span>&lt; 1 ano (crítico)</span></div>
+            <div class="item"><span class="box yellow"></span><span>1–2 anos (atenção)</span></div>
+            <div class="item"><span class="box green"></span><span>&gt; 2 anos (vigência confortável)</span></div>
+            <div class="item"><span class="box gray"></span><span>Sem data</span></div>
+          </div>
+
+          <div id="chart_venc"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h3>Mapa (parcerias por UF)</h3>
+        <div id="chart_map"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h3>Instrumentos</h3>
+
+        <div class="legenda">
+          <strong>Legenda</strong><br>
+          <span><strong>ACT</strong> = Acordo de Cooperação Técnica</span><br>
+          <span><strong>Convênio</strong> = Convênio</span><br>
+          <span><strong>TC</strong> = Termo de Colaboração</span>
+        </div>
+
+        <div class="toolbar">
+          <input id="search" placeholder="Buscar (identificação, instituição, processo, status...)" />
+        </div>
+
+        <div class="tableWrap">
+          <div class="table-scroll">
+            <table id="tbl" class="tbl">
+              <thead>
+                <tr>
+                  <th>Identificação</th>
+                  <th>Tipo</th>
+                  <th>Instituição</th>
+                  <th>Setor</th>
+                  <th>Status</th>
+                  <th>Início</th>
+                  <th>Vencimento</th>
+                  <th>Aditivos</th>
+                  <th>Processo</th>
+                  <th>Detalhes</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // =========================
+    // AJUSTE AQUI
+    // =========================
+    const CSV_URL = "./data/tbl_instrumentos.csv"; // GitHub Pages: caminho relativo
+
+    // =========================
+    // Helpers
+    // =========================
+    function escapeHTML(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function getFirst(obj, keys) {
+      for (const k of keys) {
+        if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
+      }
+      return "";
+    }
+
+    function norm(s) {
+      return String(s || "").toLowerCase().trim().replace(/\./g, "");
+    }
+
+    function parseDateAny(raw) {
+      if (!raw) return null;
+      if (raw instanceof Date && !isNaN(raw)) return raw;
+
+      const s = String(raw).trim().slice(0, 10);
+
+      // dd/mm/yyyy ou dd-mm-yyyy
+      let m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+      if (m) {
+        const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]);
+        const d = new Date(yy, mm - 1, dd);
+        return isNaN(d) ? null : d;
+      }
+
+      // yyyy-mm-dd
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        const yy = Number(m[1]), mm = Number(m[2]), dd = Number(m[3]);
+        const d = new Date(yy, mm - 1, dd);
+        return isNaN(d) ? null : d;
+      }
+
+      const d2 = new Date(s);
+      return isNaN(d2) ? null : d2;
+    }
+
+    function formatDateBR(raw) {
+      const d = parseDateAny(raw);
+      if (!d) return "";
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yy = d.getFullYear();
+      return `${dd}/${mm}/${yy}`;
+    }
+
+    function monthLabelFromDate(d) {
+      return norm(d.toLocaleString("pt-BR", { month: "short", year: "numeric" }));
+    }
+
+    function splitBullets(text) {
+      if (!text) return [];
+      const s = String(text).trim();
+      if (!s) return [];
+      return s.replace(/\r/g, "").split(/\n|•|;|\|/).map(x => x.trim()).filter(Boolean);
+    }
+
+    function makeUl(items) {
+      if (!items || !items.length) return `<div class="muted">—</div>`;
+      return `<ul>${items.map(i => `<li>${escapeHTML(i)}</li>`).join("")}</ul>`;
+    }
+
+    function getUF(r) {
+      const ufRaw = getFirst(r, ["uf","UF","estado","Estado","estado_uf","uf_parceiro"]);
+      const uf = String(ufRaw || "").trim().toUpperCase();
+      return /^[A-Z]{2}$/.test(uf) ? uf : "";
+    }
+
+    function isArquivado(r) {
+      const raw = String(getFirst(r, ["arquivado","Arquivado","status_geral","Status Geral","status"]) || "")
+        .trim().toUpperCase();
+      return raw === "SIM" || raw === "S" || raw === "1" || raw === "TRUE" || raw.includes("ARQUIV");
+    }
+
+    function computeStatus(r) {
+      if (isArquivado(r)) return "ARQUIVADO";
+
+      const stat = String(getFirst(r, ["status_vigencia","status_vencimento","Status","status"]) || "").toUpperCase();
+      if (stat.includes("SEM DATA") || stat.includes("SEMDATA")) return "SEM DATA";
+      if (stat.includes("ALERTA")) return "ALERTA 180 DIAS";
+      if (stat.includes("VIGENTE")) return "VIGENTE";
+
+      const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+      const d = parseDateAny(rawVenc);
+      if (!d) return "SEM DATA";
+
+      const diffDays = Math.ceil((d - new Date()) / (1000*60*60*24));
+      if (diffDays <= 180) return "ALERTA 180 DIAS";
+      return "VIGENTE";
+    }
+
+    function riskColorByDate(d) {
+      const now = new Date();
+      const diffDays = (d - now) / (1000*60*60*24);
+      const diffYears = diffDays / 365.25;
+      if (diffYears < 1) return "#d62c26";
+      if (diffYears <= 2) return "#f59e0b";
+      return "#16a34a";
+    }
+
+    // =========================
+    // Estado
+    // =========================
+    let tbl = [];
+    let activeMonth = null;
+
+    // =========================
+    // Filtros
+    // =========================
+    const searchEl = document.getElementById("search");
+    const resetBtnEl = document.getElementById("resetFilters");
+    const hintEl = document.getElementById("filterHint");
+    const filterYearEl = document.getElementById("filterYear");
+    const filterTipoEl = document.getElementById("filterTipo");
+    const filterStatusEl = document.getElementById("filterStatus");
+    const filterInstEl = document.getElementById("filterInst");
+    const filterUFEl = document.getElementById("filterUF"); // ✅ novo
+
+    function populateFilterOptions(rows) {
+      // Ano (vencimento)
+      const years = new Set();
+      rows.forEach(r => {
+        const rawV = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+        const d = parseDateAny(rawV);
+        if (d) years.add(String(d.getFullYear()));
+      });
+      const yearsSorted = Array.from(years).sort((a,b) => Number(a) - Number(b));
+      filterYearEl.innerHTML =
+        `<option value="">Todos</option>` +
+        yearsSorted.map(y => `<option value="${y}">${y}</option>`).join("");
+
+      // Tipo
+      const tipos = new Set();
+      rows.forEach(r => {
+        const t = String(getFirst(r, ["tipo_instrumento","Tipo","tipo"]) || "").trim();
+        if (t) tipos.add(t);
+      });
+      const tiposSorted = Array.from(tipos).sort((a,b) => a.localeCompare(b, "pt-BR"));
+      filterTipoEl.innerHTML =
+        `<option value="">Todos</option>` +
+        tiposSorted.map(t => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`).join("");
+
+      // Instituição
+      const insts = new Set();
+      rows.forEach(r => {
+        const inst = String(getFirst(r, ["instituicao_parceira","instituicao","Instituição","instituicao_parceira_nome"]) || "").trim();
+        if (inst) insts.add(inst);
+      });
+      const instsSorted = Array.from(insts).sort((a,b) => a.localeCompare(b, "pt-BR"));
+      filterInstEl.innerHTML =
+        `<option value="">Todas</option>` +
+        instsSorted.map(i => `<option value="${escapeHTML(i)}">${escapeHTML(i)}</option>`).join("");
+
+      // ✅ UF
+      const ufs = new Set();
+      rows.forEach(r => {
+        const uf = getUF(r);
+        if (uf) ufs.add(uf);
+      });
+      const ufsSorted = Array.from(ufs).sort((a,b) => a.localeCompare(b, "pt-BR"));
+      filterUFEl.innerHTML =
+        `<option value="">Todas</option>` +
+        ufsSorted.map(uf => `<option value="${uf}">${uf}</option>`).join("");
+    }
+
+    function applyFilters() {
+      const q = norm(searchEl.value);
+      const year = filterYearEl.value;
+      const tipo = filterTipoEl.value;
+      const statusSel = filterStatusEl.value;
+      const instSel = filterInstEl.value;
+      const ufSel = filterUFEl.value;
+
+      let rows = tbl;
+
+      // filtro por mês (clique no gráfico de vencimentos)
+      if (activeMonth) {
+        rows = rows.filter(r => {
+          const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+          const d = parseDateAny(rawVenc);
+          if (!d) return false;
+          return monthLabelFromDate(d) === activeMonth;
+        });
+      }
+
+      // ano
+      if (year) {
+        rows = rows.filter(r => {
+          const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+          const d = parseDateAny(rawVenc);
+          if (!d) return false;
+          return String(d.getFullYear()) === year;
+        });
+      }
+
+      // tipo
+      if (tipo) {
+        rows = rows.filter(r => String(getFirst(r, ["tipo_instrumento","Tipo","tipo"]) || "").trim() === tipo);
+      }
+
+      // instituição
+      if (instSel) {
+        rows = rows.filter(r => {
+          const inst = String(getFirst(r, ["instituicao_parceira","instituicao","Instituição","instituicao_parceira_nome"]) || "").trim();
+          return inst === instSel;
+        });
+      }
+
+      // ✅ UF
+      if (ufSel) {
+        rows = rows.filter(r => getUF(r) === ufSel);
+      }
+
+      // status
+      if (statusSel) {
+        rows = rows.filter(r => computeStatus(r) === statusSel);
+      }
+
+      // busca
+      if (q) {
+        rows = rows.filter(r => norm(Object.values(r).join(" ")).includes(q));
+      }
+
+      // UI: estado do filtro
+      const anyFilter = Boolean(activeMonth || q || year || tipo || statusSel || instSel || ufSel);
+      if (anyFilter) {
+        resetBtnEl.classList.add("active");
+        resetBtnEl.textContent = "Ver todos (filtro ativo)";
+      } else {
+        resetBtnEl.classList.remove("active");
+        resetBtnEl.textContent = "Ver todos";
+      }
+
+      const hints = [];
+      if (activeMonth) hints.push(`mês: ${activeMonth}`);
+      if (year) hints.push(`ano: ${year}`);
+      if (tipo) hints.push(`tipo: ${tipo}`);
+      if (instSel) hints.push(`instituição: ${instSel}`);
+      if (ufSel) hints.push(`UF: ${ufSel}`);
+      if (statusSel) hints.push(`status: ${statusSel}`);
+      if (q) hints.push(`busca`);
+      hintEl.textContent = hints.length ? `Filtro ativo → ${hints.join(" • ")}. (Clique no mesmo mês no gráfico para limpar o mês.)` : "";
+
+      render(rows);
+      updateKPIs(rows);
+    }
+
+    resetBtnEl.addEventListener("click", () => {
+      activeMonth = null;
+      searchEl.value = "";
+      filterYearEl.value = "";
+      filterTipoEl.value = "";
+      filterStatusEl.value = "";
+      filterInstEl.value = "";
+      filterUFEl.value = "";
+      applyFilters();
+    });
+
+    searchEl.addEventListener("input", applyFilters);
+    filterYearEl.addEventListener("change", applyFilters);
+    filterTipoEl.addEventListener("change", applyFilters);
+    filterStatusEl.addEventListener("change", applyFilters);
+    filterInstEl.addEventListener("change", applyFilters);
+    filterUFEl.addEventListener("change", applyFilters);
+
+    // =========================
+    // Tabela
+    // =========================
+    const tbodyEl = document.getElementById("tbody");
+
+    function render(rows) {
+      tbodyEl.innerHTML = "";
+
+      rows.forEach((r) => {
+        const ident = getFirst(r, ["identificacao","Identificação","id_instrumento","ID"]);
+        const inst  = getFirst(r, ["instituicao_parceira","instituicao","Instituição","instituicao_parceira_nome"]);
+        const tipo  = getFirst(r, ["tipo_instrumento","Tipo","tipo"]);
+        const proc  = getFirst(r, ["numero_processo","Processo","processo"]);
+
+        const inicio = formatDateBR(getFirst(r, ["vigencia_inicio","VIGÊNCIA - INÍCIO","inicio","Inicio"]));
+        const venc   = formatDateBR(getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]));
+
+        const stat  = computeStatus(r);
+        const setor = getFirst(r, ["setor_lotacao","Setor","setor"]);
+
+        const possuiAditivoRaw = getFirst(r, ["possui_aditivo","aditivo","Aditivo"]);
+        const qtdAditivosRaw   = getFirst(r, ["quantos_aditivos","Qtd Aditivos","qtd_aditivos"]);
+        const possuiAditivo = (possuiAditivoRaw ? String(possuiAditivoRaw) : "").trim().toUpperCase();
+        const qtdAditivos   = (qtdAditivosRaw ? String(qtdAditivosRaw) : "").trim();
+
+        let aditivosLabel = "NÃO";
+        if (["SIM","S","TRUE","1"].includes(possuiAditivo)) {
+          aditivosLabel = qtdAditivos ? `SIM (${qtdAditivos})` : "SIM";
+        } else if (["NÃO","NAO","N","FALSE","0",""].includes(possuiAditivo)) {
+          aditivosLabel = "NÃO";
+        } else if (possuiAditivoRaw) {
+          aditivosLabel = String(possuiAditivoRaw);
+        }
+
+        const coordParceiro = getFirst(r, ["coordenador_parceiro","coord_parceiro","coordenador_parceiro_nome"]);
+        const respFvs       = getFirst(r, ["coordenador_fvsrcp","resp_fvs","responsavel_fvs"]);
+        const repasse       = getFirst(r, ["repasse_financeiro","repasse","valor_repasse"]);
+
+        const dtAss  = formatDateBR(getFirst(r, ["data_da_assinatura","Data da Assinatura","data_assinatura"]));
+        const dtDoe  = formatDateBR(getFirst(r, ["data_publicacao_doe","data_publiação doe","data_publicacao_DOE"]));
+        const numExt = getFirst(r, ["numero_extrato_publicacao","número_extrato_publicacao","numero_extrato","extrato_publicacao"]);
+        const linkDoe = getFirst(r, ["link_publicacao_doe","link publicacao_doe_doe","link_doe","publicacao_doe_link"]);
+        const estado = getFirst(r, ["estado","Estado"]);
+
+        const objetivoTexto = getFirst(r, ["objetivo_resumido","objetivo_geral","objeto","Objeto"]);
+        const produtosTexto = getFirst(r, ["produtos_gerados","produtos_gerados.1","produtos","Produtos"]);
+
+        const objetivoItens = splitBullets(objetivoTexto);
+        const produtosItens = splitBullets(produtosTexto);
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHTML(ident || "—")}</td>
+          <td>${escapeHTML(tipo || "—")}</td>
+          <td>${escapeHTML(inst || "—")}</td>
+          <td>${escapeHTML(setor || "—")}</td>
+          <td>${escapeHTML(stat || "—")}</td>
+          <td>${escapeHTML(inicio || "—")}</td>
+          <td>${escapeHTML(venc || "—")}</td>
+          <td>${escapeHTML(aditivosLabel || "NÃO")}</td>
+          <td>${escapeHTML(proc || "—")}</td>
+          <td><button class="btn js-toggle" type="button">Ver</button></td>
+        `;
+        tbodyEl.appendChild(tr);
+
+        const trDetails = document.createElement("tr");
+        trDetails.className = "detailsRow";
+        trDetails.style.display = "none";
+        trDetails.innerHTML = `
+          <td colspan="10">
+            <div class="detailsBox">
+              <div class="kv">
+                <div class="k">Coord. parceiro:</div><div class="v">${escapeHTML(coordParceiro || "—")}</div>
+                <div class="k">Resp. FVS:</div><div class="v">${escapeHTML(respFvs || "—")}</div>
+                <div class="k">Repasse:</div><div class="v">${escapeHTML(repasse || "—")}</div>
+
+                <div class="k">Estado:</div><div class="v">${escapeHTML(estado || "—")}</div> 
+
+                <div class="k">Assinatura:</div><div class="v">${escapeHTML(dtAss || "—")}</div>
+                <div class="k">Publicação DOE:</div><div class="v">${escapeHTML(dtDoe || "—")}</div>
+                <div class="k">Extrato (nº):</div><div class="v">${escapeHTML(numExt || "—")}</div>
+                <div class="k">Link DOE:</div>
+                <div class="v">${
+                  linkDoe
+                    ? `<a href="${escapeHTML(linkDoe)}" target="_blank" rel="noopener noreferrer">Abrir</a>`
+                    : "—"
+                }</div>
+              </div>
+
+              <details ${objetivoItens.length ? "open" : ""}>
+                <summary>Objetivo</summary>
+                ${makeUl(objetivoItens)}
+              </details>
+
+              <details>
+                <summary>Produtos</summary>
+                ${makeUl(produtosItens)}
+              </details>
+            </div>
+          </td>
+        `;
+        tbodyEl.appendChild(trDetails);
+
+        const btn = tr.querySelector(".js-toggle");
+        btn.addEventListener("click", () => {
+          const isOpen = trDetails.style.display !== "none";
+          trDetails.style.display = isOpen ? "none" : "table-row";
+          btn.textContent = isOpen ? "Ver" : "Fechar";
+        });
+      });
+    }
+
+    // =========================
+    // KPIs e Gráficos
+    // =========================
+    const kpi_total = document.getElementById("kpi_total");
+    const kpi_vigentes = document.getElementById("kpi_vigentes");
+    const kpi_alerta = document.getElementById("kpi_alerta");
+    const kpi_semdata = document.getElementById("kpi_semdata");
+    const kpi_arquivados = document.getElementById("kpi_arquivados"); // ✅ novo
+
+    function updateKPIs(rows) {
+      // KPI Arquivados separado (respeita filtros)
+      const arquivados = rows.filter(r => computeStatus(r) === "ARQUIVADO").length;
+      kpi_arquivados.textContent = arquivados;
+
+      // KPIs principais ignoram arquivados
+      const base = rows.filter(r => computeStatus(r) !== "ARQUIVADO");
+
+      const counts = { "VIGENTE": 0, "ALERTA 180 DIAS": 0, "SEM DATA": 0 };
+      base.forEach(r => { counts[computeStatus(r)]++; });
+
+      kpi_total.textContent = base.length;
+      kpi_vigentes.textContent = counts["VIGENTE"];
+      kpi_alerta.textContent = counts["ALERTA 180 DIAS"];
+      kpi_semdata.textContent = counts["SEM DATA"];
+    }
+
+    function buildStatusDonut(rows) {
+      const base = rows.filter(r => computeStatus(r) !== "ARQUIVADO");
+
+      const counts = { "VIGENTE": 0, "ALERTA 180 DIAS": 0, "SEM DATA": 0 };
+      base.forEach(r => { counts[computeStatus(r)]++; });
+
+      Plotly.newPlot("chart_status", [{
+        type: "pie",
+        labels: ["VIGENTE", "ALERTA 180 DIAS", "SEM DATA"],
+        values: [counts["VIGENTE"], counts["ALERTA 180 DIAS"], counts["SEM DATA"]],
+        hole: 0.55,
+        textinfo: "none",
+        texttemplate: "<b>%{value}</b><br><b>%{percent}</b>",
+        textposition: "inside",
+        marker: {
+          colors: ["#16a34a", "#f59e0b", "#9ca3af"],
+          line: { color: "#ffffff", width: 3 }
+        },
+        sort: false,
+        showlegend: false
+      }], {
+        height: 320,
+        margin: { t: 10, r: 10, b: 10, l: 10 }
+      }, { displayModeBar:false, responsive:true });
+    }
+
+    function buildVencBar(rows) {
+      const base = rows.filter(r => computeStatus(r) !== "ARQUIVADO");
+
+      const monthMap = new Map(); // key -> {count, color}
+      base.forEach(r => {
+        const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+        const d = parseDateAny(rawVenc);
+        if (!d) return;
+
+        const key = monthLabelFromDate(d);
+        const prev = monthMap.get(key) || { count:0, color: riskColorByDate(d) };
+        prev.count += 1;
+
+        const c = riskColorByDate(d);
+        const priority = (hex) => hex === "#d62c26" ? 3 : (hex === "#f59e0b" ? 2 : 1);
+        if (priority(c) > priority(prev.color)) prev.color = c;
+
+        monthMap.set(key, prev);
+      });
+
+      const months = Array.from(monthMap.keys()).sort((a,b) => {
+        const parseKey = (k) => {
+          const [mon, year] = k.split(" ");
+          const mMap = {jan:0,fev:1,mar:2,abr:3,mai:4,jun:5,jul:6,ago:7,set:8,out:9,nov:10,dez:11};
+          return new Date(Number(year), mMap[mon] ?? 0, 1).getTime();
+        };
+        return parseKey(a) - parseKey(b);
+      });
+
+      const y = months.map(m => monthMap.get(m).count);
+      const colors = months.map(m => monthMap.get(m).color);
+      const xPretty = months.map(m => m.replace(/(^\w)/, c => c.toUpperCase()));
+
+      const chartEl = document.getElementById("chart_venc");
+      Plotly.newPlot(chartEl, [{
+        type: "bar",
+        x: xPretty,
+        y,
+        marker: { color: colors },
+        showlegend: false
+      }], {
+        height: 320,
+        xaxis: { tickangle: -45, automargin: true },
+        margin: { t: 30, r: 20, b: 90, l: 50 }
+      }, { displayModeBar:false, responsive:true });
+
+      chartEl.on("plotly_click", (data) => {
+        if (!data || !data.points || !data.points.length) return;
+        const clicked = norm(data.points[0].x);
+        activeMonth = (activeMonth === clicked) ? null : clicked;
+        applyFilters();
+      });
+    }
+
+    // =========================
+    // MAPA — SOLUÇÃO FINAL (contagem correta)
+    // =========================
+    function buildBrazilMap(rows) {
+      rows = rows.filter(r => computeStatus(r) !== "ARQUIVADO");
+
+      // 1) DEDUPE GLOBAL (instrumento)
+      const seen = new Set();
+      const uniqueRows = [];
+
+      rows.forEach(r => {
+        const id =
+          String(getFirst(r, ["id_instrumento","ID","identificacao","Identificação","numero_processo","Processo","processo"]) || "")
+            .trim();
+        if (!id) return;
+        if (seen.has(id)) return;
+        seen.add(id);
+        uniqueRows.push(r);
+      });
+
+      rows = uniqueRows;
+
+      // 2) AGREGA POR UF com SETs
+      const byUF = new Map(); // uf -> { ids:Set, inst:Set }
+
+      rows.forEach(r => {
+        const uf = getUF(r);
+        if (!uf) return;
+
+        const id =
+          String(getFirst(r, ["id_instrumento","ID","identificacao","Identificação","numero_processo","Processo","processo"]) || "")
+            .trim();
+        if (!id) return;
+
+        const instRaw = getFirst(r, ["instituicao_parceira","instituicao","Instituição","instituicao_parceira_nome"]);
+        const inst = String(instRaw || "").trim();
+
+        if (!byUF.has(uf)) byUF.set(uf, { ids: new Set(), inst: new Set() });
+
+        const bucket = byUF.get(uf);
+        bucket.ids.add(id);
+        if (inst) bucket.inst.add(inst);
+      });
+
+      if (byUF.size === 0) {
+        byUF.set("AM", { ids: new Set(["—"]), inst: new Set(["—"]) });
+      }
+
+      // 3) COORDENADAS (centróides)
+      const ufCoords = {
+        AC: [-8.77, -70.55], AL: [-9.57, -36.78], AM: [-3.47, -65.10], AP: [ 1.41, -51.77],
+        BA: [-12.96, -41.71], CE: [-5.20, -39.53], DF: [-15.83, -47.86], ES: [-19.19, -40.34],
+        GO: [-15.98, -49.86], MA: [-5.42, -45.44], MG: [-18.10, -44.38], MS: [-20.51, -54.54],
+        MT: [-12.64, -55.42], PA: [-3.79, -52.48], PB: [-7.06, -35.55], PE: [-8.28, -35.07],
+        PI: [-8.28, -43.68], PR: [-24.89, -51.55], RJ: [-22.25, -42.66], RN: [-5.81, -36.59],
+        RO: [-10.83, -63.34], RR: [ 1.99, -61.33], RS: [-30.17, -53.50], SC: [-27.45, -50.95],
+        SE: [-10.57, -37.45], SP: [-22.19, -48.79], TO: [-10.25, -48.25]
+      };
+
+      // 4) ARRAYS PARA PLOT
+      const ufs = Array.from(byUF.keys()).sort();
+      const lats = [];
+      const lons = [];
+      const texts = [];
+      const sizes = [];
+
+      ufs.forEach(uf => {
+        const coord = ufCoords[uf];
+        if (!coord) return;
+
+        const info = byUF.get(uf);
+        const count = info.ids.size;
+
+        const instList = Array.from(info.inst).filter(Boolean).sort().slice(0, 6);
+        const instHtml = instList.length ? instList.map(x => `• ${escapeHTML(x)}`).join("<br>") : "—";
+
+        lats.push(coord[0]);
+        lons.push(coord[1]);
+        sizes.push(Math.min(24, 10 + count * 2));
+        texts.push(
+          `<b>${uf}</b><br>` +
+          `Parcerias: <b>${count}</b><br>` +
+          `<span style="color:#666">Instituições (amostra):</span><br>${instHtml}`
+        );
+      });
+
+      const chartEl = document.getElementById("chart_map");
+      if (!chartEl) return;
+
+      Plotly.newPlot(chartEl, [{
+        type: "scattergeo",
+        lat: lats,
+        lon: lons,
+        text: texts,
+        mode: "markers",
+        marker: { size: sizes, opacity: 0.85, color: "#111" },
+        showlegend: false,
+        hovertemplate: "%{text}<extra></extra>",
+        hoverlabel: {
+          bgcolor: "#ffffff",
+          bordercolor: "#dddddd",
+          font: { color: "#111111", size: 12 }
+        }
+      }], {
+        height: 320,
+        margin: { t: 10, r: 10, b: 10, l: 10 },
+        geo: {
+          scope: "south america",
+          resolution: 50,
+          showcountries: true,
+          countrycolor: "#bbb",
+          showland: true,
+          landcolor: "#f3f4f6",
+          showocean: true,
+          oceancolor: "#ffffff",
+          lataxis: { range: [-35, 6] },
+          lonaxis: { range: [-75, -30] }
+        }
+      }, { displayModeBar: false, responsive: true });
+    }
+
+    // =========================
+    // Init
+    // =========================
+    (async function init() {
+      const parsed = await new Promise((resolve, reject) => {
+        const csvNoCache = CSV_URL + "?v=" + Date.now();
+
+        Papa.parse(csvNoCache, {
+          download: true,
+          header: true,
+          skipEmptyLines: "greedy",
+          transformHeader: (h) => String(h || "").replace(/^\uFEFF/, "").trim(),
+          complete: (res) => {
+            if (res.errors && res.errors.length) console.warn("PapaParse:", res.errors);
+
+            let rows = res.data || [];
+            rows = rows.filter(r => Object.values(r || {}).some(v => String(v ?? "").trim() !== ""));
+
+            if (!rows.length) return reject(new Error("CSV vazio ou não encontrado"));
+            resolve(rows);
+          },
+          error: (err) => reject(err)
+        });
+      });
+
+      tbl = parsed;
+
+      populateFilterOptions(tbl);
+
+      // gráficos + mapa usam a base completa (não filtrada), e a tabela responde ao filtro
+      buildStatusDonut(tbl);
+      buildVencBar(tbl);
+      buildBrazilMap(tbl);
+
+      // primeira renderização
+      applyFilters();
+    })().catch(err => {
+      console.error("[INIT] ERRO:", err);
+      alert("Erro ao carregar o CSV. Abra o Console (F12) para ver o detalhe.");
+    });
+  </script>
+</body>
+</html>

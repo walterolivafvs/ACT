@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Controle de ACTs e Convênios</title>
+
+  <!-- libs -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root { --card:#fff; --border:#e7e7e7; --muted:#666; }
+
+    /* Evita a página "pular" quando a barra vertical aparece/desaparece */
+    html { scrollbar-gutter: stable; }
+    body { overflow-y: scroll; }
+
+    body { font-family: Arial, sans-serif; margin: 18px 24px; background:#fafafa; }
+    h3 { margin: 10px 0 10px 0; }
+
+    /* header institucional */
+    .topbar{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin: 8px 0 16px 0;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .brand{ display:flex; align-items:center; gap:14px; }
+    .brand-logos{
+      display:flex; align-items:center; gap:12px;
+      padding-right:14px; border-right:1px solid #eee;
+    }
+    .logo{ display:block; height:54px; width:auto; object-fit:contain; }
+    .logo.fvs{ height:48px; }
+    .logo.depi{ height:54px; border-radius:8px; }
+
+    .brand-text .org{ font-size:12px; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin-bottom:2px; }
+    .brand-text .title{ margin:0; font-size:30px; line-height:1.15; }
+    .brand-text .subtitle{ margin-top:4px; font-size:13px; color:var(--muted); }
+
+    /* cards KPIs */
+    .cards { display:flex; gap:12px; flex-wrap:wrap; margin: 14px 0 18px 0; }
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 220px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .card .label { color:var(--muted); font-size:12px; }
+    .card .value { font-size:28px; font-weight:800; margin-top:6px; }
+
+    /* linha de gráficos */
+    .row { display:flex; gap:14px; flex-wrap:wrap; }
+    .panel{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      flex: 1;
+      min-width: 380px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    #chart_status, #chart_venc { width:100%; height:320px; }
+
+    /* instrumentos / legenda */
+    .legenda{
+      background:#f9f9f9;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:10px 12px;
+      font-size: 12px;
+      color:#444;
+    }
+
+    /* barra busca + botão */
+    .toolbar {
+      display:flex;
+      gap:8px;
+      margin: 10px 0 6px 0;
+      align-items: center;
+    }
+    #search{
+      flex: 1;
+      padding: 10px 12px;
+      border:1px solid #ddd;
+      border-radius:10px;
+      font-size: 13px;
+      outline:none;
+      background:#fff;
+    }
+
+    .btn{
+      border:1px solid #ccc;
+      background:#f5f5f5;
+      border-radius:8px;
+      padding:6px 10px;
+      cursor:pointer;
+      font-size:12px;
+      min-width:84px;
+      white-space: nowrap;
+    }
+    .btn.active {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+    }
+
+    .filterHint {
+      font-size: 12px;
+      color: #666;
+      margin: 0 0 6px 2px;
+    }
+
+    /* ===== LEGENDA DE RISCO (gráfico de vencimentos) ===== */
+    .legend-risk {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #444;
+    }
+    .legend-risk .item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-risk .box {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      border: 1px solid #ccc;
+      display: inline-block;
+    }
+    .legend-risk .red { background: #d62c26; }
+    .legend-risk .yellow { background: #f59e0b; }
+    .legend-risk .green { background: #16a34a; }
+    .legend-risk .gray { background: #9ca3af; }
+
+    /* ===== TABELA ===== */
+    .tableWrap{
+      margin-top: 8px;
+      border:1px solid #eee;
+      border-radius:12px;
+      overflow:hidden;
+      background:#fff;
+    }
+
+    .table-scroll{
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .tbl{
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;   /* trava colunas */
+      min-width: 1100px;     /* impede “coluna em pé” */
+    }
+
+    .tbl th, .tbl td{
+      border-bottom:1px solid #eee;
+      padding:10px 10px;
+      font-size:13px;
+      line-height:1.25;
+      vertical-align: middle;
+    }
+
+    .tbl thead th{
+      font-weight:700;
+      background:#fbfbfb;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .tbl tbody tr:nth-child(even) td { background:#fafafa; }
+    .tbl tbody tr:hover td { background:#f1f5ff; }
+
+    .tbl tbody td { text-align:center; white-space: nowrap; }
+
+    /* Instituição (3ª) pode quebrar e alinha esquerda */
+    .tbl thead th:nth-child(3),
+    .tbl tbody td:nth-child(3){
+      text-align:left;
+      white-space: normal;
+    }
+
+    /* Processo (9ª) pode quebrar */
+    .tbl thead th:nth-child(9),
+    .tbl tbody td:nth-child(9){
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    /* ===== DETALHES (linha separada com COLSPAN) ===== */
+    .detailsRow td{
+      background:#fff !important;
+      padding: 0 !important;
+      border-bottom: 1px solid #eee;
+    }
+    .detailsBox{
+      border:1px solid #eee;
+      border-radius:10px;
+      padding:10px;
+      background:#fff;
+      text-align:left;
+      margin:10px;
+      box-shadow: 0 8px 20px rgba(0,0,0,.06);
+    }
+
+    .kv{ display:grid; grid-template-columns:140px 1fr; gap:6px 10px; margin-bottom:8px; }
+    .k{ color:#444; font-weight:700; }
+    .v{ color:#111; }
+    details{ margin-top:8px; }
+    summary{ cursor:pointer; font-weight:700; }
+
+    ul{ margin:6px 0 18px; padding-left: 18px; }
+    li{ margin:4px 0; }
+
+    .muted{ color:#888; }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logos">
+        <img class="logo fvs" src="./fvs-logo.png" alt="FVS-RCP" />
+        <img class="logo depi" src="./logo_depi.jpeg" alt="DEPI - FVS-RCP" />
+      </div>
+
+      <div class="brand-text">
+        <div class="org">FVS-RCP • DEPI</div>
+        <h1 class="title">Controle de Acordos de Cooperação Técnica e Convênios</h1>
+        <div class="subtitle">Painel de monitoramento de vigência e renovação</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="cards">
+    <div class="card">
+      <div class="label">Total</div>
+      <div class="value" id="kpi_total">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Vigentes</div>
+      <div class="value" id="kpi_vigentes">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Alerta (≤180 dias)</div>
+      <div class="value" id="kpi_alerta">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Sem data</div>
+      <div class="value" id="kpi_semdata">—</div>
+    </div>
+  </div>
+
+  <!-- gráficos -->
+  <div class="row">
+    <div class="panel">
+      <h3>Status de vigência</h3>
+      <div id="chart_status"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Vencimentos por mês</h3>
+
+      <div class="legend-risk">
+        <div class="item"><span class="box red"></span><span>&lt; 1 ano (crítico)</span></div>
+        <div class="item"><span class="box yellow"></span><span>1–2 anos (atenção)</span></div>
+        <div class="item"><span class="box green"></span><span>&gt; 2 anos (vigência confortável)</span></div>
+        <div class="item"><span class="box gray"></span><span>Sem data</span></div>
+      </div>
+
+      <div id="chart_venc"></div>
+    </div>
+  </div>
+
+  <!-- instrumentos + busca + tabela -->
+  <div class="panel" style="margin-top:14px;">
+    <h3>Instrumentos</h3>
+
+    <div class="legenda">
+      <strong>Legenda</strong><br>
+      <span><strong>ACT</strong> = Acordo de Cooperação Técnica</span><br>
+      <span><strong>Convênio</strong> = Convênio</span><br>
+      <span><strong>TC</strong> = Termo de Colaboração</span>
+    </div>
+
+    <div class="toolbar">
+      <input id="search" placeholder="Buscar (identificação, instituição, processo, status...)" />
+      <button id="resetFilters" class="btn">Ver todos</button>
+    </div>
+    <div id="filterHint" class="filterHint"></div>
+
+    <div class="tableWrap">
+      <div class="table-scroll">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Identificação</th>
+              <th>Tipo</th>
+              <th>Instituição</th>
+              <th>Setor</th>
+              <th>Status</th>
+              <th>Início</th>
+              <th>Vencimento</th>
+              <th>Aditivos</th>
+              <th>Processo</th>
+              <th>Detalhes</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================
+    // AJUSTE AQUI
+    // =========================
+    const CSV_URL = "./data/tbl_instrumentos.csv";
+
+    (function init() {
+      const body = document.getElementById("tbody");
+
+      const kpi_total   = document.getElementById("kpi_total");
+      const kpi_vigentes= document.getElementById("kpi_vigentes");
+      const kpi_alerta  = document.getElementById("kpi_alerta");
+      const kpi_semdata = document.getElementById("kpi_semdata");
+
+      const searchEl  = document.getElementById("search");
+      const resetBtn  = document.getElementById("resetFilters");
+      const hintEl    = document.getElementById("filterHint");
+
+      const chartStatusEl = document.getElementById("chart_status");
+      const chartVencEl   = document.getElementById("chart_venc");
+
+      // ===== helpers =====
+      function escapeHTML(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function getFirst(obj, keys) {
+        for (const k of keys) {
+          if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
+        }
+        return "";
+      }
+
+      function parseDateAny(raw) {
+        if (!raw) return null;
+        if (raw instanceof Date && !isNaN(raw)) return raw;
+
+        const s = String(raw).trim();
+        // dd/mm/yyyy
+        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (m) {
+          const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]);
+          const d = new Date(yy, mm - 1, dd);
+          return isNaN(d) ? null : d;
+        }
+        // yyyy-mm-dd ou outros
+        const d2 = new Date(s);
+        return isNaN(d2) ? null : d2;
+      }
+
+      function formatDateBR(raw) {
+        const d = parseDateAny(raw);
+        if (!d) return "";
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const yy = d.getFullYear();
+        return `${dd}/${mm}/${yy}`;
+      }
+
+      function norm(s) {
+        return String(s || "").toLowerCase().trim().replace(/\./g, "");
+      }
+
+      function monthLabelFromDate(d) {
+        // "jul 2026" (sem ponto)
+        return norm(d.toLocaleString("pt-BR", { month: "short", year: "numeric" }));
+      }
+
+      function splitBullets(text) {
+        if (!text) return [];
+        const s = String(text).trim();
+        if (!s) return [];
+        return s
+          .replace(/\r/g, "")
+          .split(/\n|•|;/)
+          .map(x => x.trim())
+          .filter(Boolean);
+      }
+
+      function makeUl(items) {
+        if (!items || !items.length) return `<div class="muted">—</div>`;
+        return `<ul>${items.map(i => `<li>${escapeHTML(i)}</li>`).join("")}</ul>`;
+      }
+
+      function computeStatus(r) {
+        const stat = String(getFirst(r, ["status_vigencia","status_vencimento","Status","status"]) || "").toUpperCase();
+        if (stat.includes("SEM DATA") || stat.includes("SEMDATA")) return "SEM DATA";
+        if (stat.includes("ALERTA")) return "ALERTA 180 DIAS";
+        if (stat.includes("VIGENTE")) return "VIGENTE";
+
+        // fallback por data
+        const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+        const d = parseDateAny(rawVenc);
+        if (!d) return "SEM DATA";
+        const diffDays = Math.ceil((d - new Date()) / (1000*60*60*24));
+        if (diffDays <= 180) return "ALERTA 180 DIAS";
+        return "VIGENTE";
+      }
+
+      function riskColorByDate(d) {
+        const now = new Date();
+        const diffDays = (d - now) / (1000*60*60*24);
+        const diffYears = diffDays / 365.25;
+        if (diffYears < 1) return "#d62c26";
+        if (diffYears <= 2) return "#f59e0b";
+        return "#16a34a";
+      }
+
+      // ===== estado =====
+      let tbl = [];
+      let activeMonth = null; // ex: "jul 2026"
+
+      // ===== render =====
+      function render(rows) {
+        body.innerHTML = "";
+
+        rows.forEach((r) => {
+          const ident = getFirst(r, ["identificacao","Identificação","id_instrumento","ID"]);
+          const inst  = getFirst(r, ["instituicao_parceira","instituicao","Instituição","instituicao_parceira_nome"]);
+          const tipo  = getFirst(r, ["tipo_instrumento","Tipo","tipo"]);
+          const proc  = getFirst(r, ["numero_processo","Processo","processo"]);
+
+          const inicio = formatDateBR(getFirst(r, ["vigencia_inicio","VIGÊNCIA - INÍCIO","inicio","Inicio"]));
+          const vencRaw = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+          const venc = formatDateBR(vencRaw);
+
+          const setor = getFirst(r, ["setor_lotacao","Setor","setor"]);
+          const statusComputed = computeStatus(r);
+
+          const possuiAditivoRaw = getFirst(r, ["possui_aditivo","aditivo","Aditivo"]);
+          const qtdAditivosRaw   = getFirst(r, ["quantos_aditivos","Qtd Aditivos","qtd_aditivos"]);
+
+          const possuiAditivo = (possuiAditivoRaw ? String(possuiAditivoRaw) : "").trim().toUpperCase();
+          const qtdAditivos   = (qtdAditivosRaw ? String(qtdAditivosRaw) : "").trim();
+
+          let aditivosLabel = "NÃO";
+          if (["SIM","S","TRUE","1"].includes(possuiAditivo)) {
+            aditivosLabel = qtdAditivos ? `SIM (${qtdAditivos})` : "SIM";
+          } else if (["NÃO","NAO","N","FALSE","0",""].includes(possuiAditivo)) {
+            aditivosLabel = "NÃO";
+          } else if (possuiAditivoRaw) {
+            aditivosLabel = String(possuiAditivoRaw);
+          }
+
+          const coordParceiro = getFirst(r, ["coordenador_parceiro","coord_parceiro","coordenador_parceiro_nome"]);
+          const respFvs       = getFirst(r, ["coordenador_fvsrcp","resp_fvs","responsavel_fvs"]);
+          const repasse       = getFirst(r, ["repasse_financeiro","repasse","valor_repasse"]);
+
+          const objetivoTexto = getFirst(r, ["objetivo_resumido","objetivo_geral","objeto","Objeto"]);
+          const produtosTexto = getFirst(r, ["produtos_gerados","produtos","Produtos"]);
+
+          const objetivoItens = splitBullets(objetivoTexto);
+          const produtosItens = splitBullets(produtosTexto);
+
+          // Linha principal
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${escapeHTML(ident || "—")}</td>
+            <td>${escapeHTML(tipo || "—")}</td>
+            <td>${escapeHTML(inst || "—")}</td>
+            <td>${escapeHTML(setor || "—")}</td>
+            <td>${escapeHTML(statusComputed || "—")}</td>
+            <td>${escapeHTML(inicio || "—")}</td>
+            <td>${escapeHTML(venc || "—")}</td>
+            <td>${escapeHTML(aditivosLabel || "NÃO")}</td>
+            <td>${escapeHTML(proc || "—")}</td>
+            <td><button class="btn js-toggle" type="button">Ver</button></td>
+          `;
+          body.appendChild(tr);
+
+          // Linha de detalhes (colspan)
+          const trDetails = document.createElement("tr");
+          trDetails.className = "detailsRow";
+          trDetails.style.display = "none";
+          trDetails.innerHTML = `
+            <td colspan="10">
+              <div class="detailsBox">
+                <div class="kv">
+                  <div class="k">Coord. parceiro:</div><div class="v">${escapeHTML(coordParceiro || "—")}</div>
+                  <div class="k">Resp. FVS:</div><div class="v">${escapeHTML(respFvs || "—")}</div>
+                  <div class="k">Repasse:</div><div class="v">${escapeHTML(repasse || "—")}</div>
+                </div>
+
+                <details ${objetivoItens.length ? "open" : ""}>
+                  <summary>Objetivo</summary>
+                  ${makeUl(objetivoItens)}
+                </details>
+
+                <details>
+                  <summary>Produtos</summary>
+                  ${makeUl(produtosItens)}
+                </details>
+              </div>
+            </td>
+          `;
+          body.appendChild(trDetails);
+
+          // Listener do botão (por linha)
+          const btn = tr.querySelector(".js-toggle");
+          btn.addEventListener("click", () => {
+            const isOpen = trDetails.style.display !== "none";
+            trDetails.style.display = isOpen ? "none" : "table-row";
+            btn.textContent = isOpen ? "Ver" : "Fechar";
+          });
+        });
+      }
+
+      // ===== gráficos + KPIs =====
+      function buildChartsAndKPIs() {
+        const total = tbl.length;
+
+        let vigentes = 0, alerta = 0, semdata = 0;
+        tbl.forEach(r => {
+          const s = computeStatus(r);
+          if (s === "VIGENTE") vigentes++;
+          else if (s === "ALERTA 180 DIAS") alerta++;
+          else semdata++;
+        });
+
+        kpi_total.textContent = total;
+        kpi_vigentes.textContent = vigentes;
+        kpi_alerta.textContent = alerta;
+        kpi_semdata.textContent = semdata;
+
+        // --- gráfico status ---
+        Plotly.newPlot(chartStatusEl, [{
+          type: "bar",
+          x: ["VIGENTE", "ALERTA 180 DIAS", "SEM DATA"],
+          y: [vigentes, alerta, semdata]
+        }], {
+          margin: { t: 10, r: 10, b: 40, l: 40 },
+          height: 320
+        }, { displayModeBar: false, responsive: true });
+
+        // --- gráfico vencimentos por mês ---
+        const monthMap = new Map(); // key -> {count, color}
+        let semDataCount = 0;
+
+        tbl.forEach(r => {
+          const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+          const d = parseDateAny(rawVenc);
+          if (!d) { semDataCount++; return; }
+
+          const key = monthLabelFromDate(d); // "jul 2026"
+          const c = riskColorByDate(d);
+
+          const prev = monthMap.get(key) || { count: 0, color: c, time: d.getTime() };
+          prev.count += 1;
+          // mantém a “cor mais crítica” se houver mistura
+          const priority = (hex) => hex === "#d62c26" ? 3 : (hex === "#f59e0b" ? 2 : 1);
+          if (priority(c) > priority(prev.color)) prev.color = c;
+          // mantém o menor timestamp para ordenação estável
+          if (d.getTime() < prev.time) prev.time = d.getTime();
+          monthMap.set(key, prev);
+        });
+
+        const months = Array.from(monthMap.entries())
+          .sort((a,b) => a[1].time - b[1].time)
+          .map(([k]) => k);
+
+        const y = months.map(m => monthMap.get(m).count);
+        const colors = months.map(m => monthMap.get(m).color);
+
+        Plotly.newPlot(chartVencEl, [{
+          type: "bar",
+          x: months,
+          y,
+          marker: { color: colors }
+        }], {
+          margin: { t: 10, r: 10, b: 90, l: 40 },
+          height: 320,
+          xaxis: { tickangle: -45, automargin: true }
+        }, { displayModeBar: false, responsive: true });
+
+        // Clique no mês = ativa filtro
+        chartVencEl.on("plotly_click", (data) => {
+          if (!data || !data.points || !data.points.length) return;
+          activeMonth = String(data.points[0].x || "").trim();
+          applyFilters();
+        });
+      }
+
+      // ===== filtros =====
+      function applyFilters() {
+        const q = norm(searchEl.value);
+
+        let rows = tbl.slice();
+
+        if (activeMonth) {
+          rows = rows.filter(r => {
+            const rawVenc = getFirst(r, ["vigencia_termino","VIGÊNCIA - TÉRMINO","vencimento","Vencimento","vigencia_fim"]);
+            const d = parseDateAny(rawVenc);
+            if (!d) return false;
+            return monthLabelFromDate(d) === norm(activeMonth);
+          });
+        }
+
+        if (q) {
+          rows = rows.filter(r => norm(Object.values(r).join(" ")).includes(q));
+        }
+
+        // hint + botão
+        if (activeMonth) {
+          resetBtn.classList.add("active");
+          resetBtn.textContent = "Ver todos (filtro ativo)";
+          hintEl.textContent = `Filtro por mês: ${activeMonth}. Clique em "Ver todos" para limpar.`;
+        } else {
+          resetBtn.classList.remove("active");
+          resetBtn.textContent = "Ver todos";
+          hintEl.textContent = q ? "Filtro por texto ativo." : "";
+        }
+
+        render(rows);
+      }
+
+      resetBtn.addEventListener("click", () => {
+        activeMonth = null;
+        searchEl.value = "";
+        applyFilters();
+      });
+
+      searchEl.addEventListener("input", applyFilters);
+
+      // ===== carrega CSV =====
+      Papa.parse(CSV_URL, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: (res) => {
+          if (res.errors && res.errors.length) {
+            console.error("PapaParse errors:", res.errors);
+          }
+          tbl = (res.data || []).filter(r => r && Object.keys(r).length);
+          buildChartsAndKPIs();
+          applyFilters();
+        },
+        error: (err) => {
+          console.error("Erro ao carregar CSV:", err);
+          alert("Erro ao carregar o CSV. Abra o Console (F12) para ver o detalhe.");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
