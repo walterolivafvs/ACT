@@ -26,4 +26,4 @@ jobs:
 
       - name: Executar script de relatório
         run: |
-          python monitor_act.py
+          python scripts/monitor_act.py
