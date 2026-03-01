@@ -24,11 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Gerar relatórios (CSV + resumo)
-        run: |
-          python scripts/monitor_act.py
-
-            - name: Executar monitoramento
+      - name: Executar monitoramento
         run: |
           python scripts/monitor_act.py
 
@@ -36,6 +32,6 @@ jobs:
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          SMTP_TO:   ${{ secrets.SMTP_TO }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
         run: |
           python scripts/send_email_resumo.py
