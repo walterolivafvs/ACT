@@ -34,4 +34,4 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           SMTP_TO: ${{ secrets.SMTP_TO }}
         run: |
-          python scripts/send_email_resumo.py
+          python scripts/send_email.py
