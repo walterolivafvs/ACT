@@ -28,13 +28,14 @@ jobs:
         run: |
           python scripts/monitor_act.py
 
-      - name: Enviar e-mail do relatório
+            - name: Executar monitoramento
+        run: |
+          python scripts/monitor_act.py
+
+      - name: Enviar e-mail (resumo, sem anexos)
         env:
-          SMTP_HOST: smtp.gmail.com
-          SMTP_PORT: "587"
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          SMTP_TO: ${{ secrets.SMTP_TO }}
-          SMTP_FROM_NAME: "FVS-RCP • DEPI"
+          SMTP_TO:   ${{ secrets.SMTP_TO }}
         run: |
-          python scripts/send_email.py
+          python scripts/send_email_resumo.py
