@@ -24,14 +24,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Executar script de relatório
+      - name: Gerar relatórios (CSV + resumo)
         run: |
           python scripts/monitor_act.py
 
-      - name: Enviar e-mail (modo teste controlado)
+      - name: Enviar e-mail do relatório
         env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+          SMTP_FROM_NAME: "FVS-RCP • DEPI"
         run: |
           python scripts/send_email.py
