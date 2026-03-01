@@ -27,3 +27,11 @@ jobs:
       - name: Executar script de relatório
         run: |
           python scripts/monitor_act.py
+
+      - name: Enviar e-mail (modo teste controlado)
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+        run: |
+          python scripts/send_email.py
