@@ -10,16 +10,16 @@ from typing import Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
-
 CSV_IN = DATA_DIR / "tbl_instrumentos.csv"
 
+# Saídas (mantemos CSVs só para auditoria interna; NÃO precisa anexar no email)
 OUT_PRIORIDADES = DATA_DIR / "prioridades.csv"
-OUT_ALERTA_30 = DATA_DIR / "alertas_30.csv"
 OUT_ALERTA_60 = DATA_DIR / "alertas_60.csv"
 OUT_ALERTA_180 = DATA_DIR / "alertas_180.csv"
 OUT_LOG = DATA_DIR / "resumo_execucao.json"
 
 DATE_COLS_END = ["vigencia_termino", "VIGÊNCIA - TÉRMINO", "vencimento", "Vencimento", "vigencia_fim"]
+DATE_COLS_START = ["vigencia_inicio", "VIGÊNCIA - INÍCIO", "inicio", "Inicio"]
 
 def norm(s: str) -> str:
     return (s or "").strip()
@@ -67,25 +67,6 @@ def days_to(d: Optional[date], today: date) -> Optional[int]:
         return None
     return (d - today).days
 
-def risco_categoria(dias: Optional[int]) -> str:
-    """
-    Faixas alinhadas à sua governança:
-    - ≤180d: PREPARAÇÃO (disparar com antecedência)
-    - ≤60d : EXECUÇÃO (ajustes finais e tramitação forte)
-    - ≤30d : CRÍTICO (risco alto de não tramitar a tempo)
-    """
-    if dias is None:
-        return "SEM DATA"
-    if dias < 0:
-        return "VENCIDO"
-    if dias <= 30:
-        return "CRÍTICO (≤30d)"
-    if dias <= 60:
-        return "EXECUÇÃO (≤60d)"
-    if dias <= 180:
-        return "PREPARAÇÃO (≤180d)"
-    return "OK (>180d)"
-
 def is_concluido(row: Dict[str, str]) -> bool:
     v = upper(first(row, [
         "status_execucao", "status_execução",
@@ -99,32 +80,55 @@ def is_arquivado(row: Dict[str, str]) -> bool:
     return v in {"SIM", "S", "1", "TRUE"} or ("ARQUIV" in v)
 
 def ensure_publicacao_doe(row: Dict[str, str]) -> None:
-    """
-    Se existir numero_extrato_publicado e publicacao_doe estiver vazio, copia para publicacao_doe.
-    (Assim você mantém o painel coerente com “Publicação DOE”.)
-    """
     extr = norm(row.get("numero_extrato_publicado", ""))
     if not norm(row.get("publicacao_doe", "")) and extr:
         row["publicacao_doe"] = extr
 
-def read_csv(path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
+def sniff_dialect(path: Path) -> csv.Dialect:
+    sample = path.read_text(encoding="utf-8", errors="ignore")[:4096]
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=";,|\t")
+    except Exception:
+        # fallback BR
+        class D(csv.Dialect):
+            delimiter = ";"
+            quotechar = '"'
+            doublequote = True
+            skipinitialspace = False
+            lineterminator = "\n"
+            quoting = csv.QUOTE_MINIMAL
+        return D()
+
+def read_csv(path: Path) -> Tuple[List[Dict[str, str]], List[str], csv.Dialect]:
+    dialect = sniff_dialect(path)
     with path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, dialect=dialect)
         headers = reader.fieldnames or []
-        rows = []
+        rows: List[Dict[str, str]] = []
         for r in reader:
             if not any(norm(str(v)) for v in r.values()):
                 continue
             rows.append({k: (v if v is not None else "") for k, v in r.items()})
-        return rows, headers
+        return rows, headers, dialect
 
-def write_csv(path: Path, rows: List[Dict[str, str]], headers: List[str]) -> None:
+def write_csv(path: Path, rows: List[Dict[str, str]], headers: List[str], dialect: csv.Dialect) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=headers)
+        w = csv.DictWriter(f, fieldnames=headers, dialect=dialect)
         w.writeheader()
         for r in rows:
             w.writerow({h: r.get(h, "") for h in headers})
+
+def categoria_status(dias: Optional[int]) -> str:
+    if dias is None:
+        return "SEM DATA"
+    if dias < 0:
+        return "VENCIDO"
+    if dias <= 60:
+        return "CRITICO_60"
+    if dias <= 180:
+        return "ALERTA_180"
+    return "CONFORTAVEL"
 
 def main() -> int:
     today = date.today()
@@ -133,85 +137,61 @@ def main() -> int:
         print(f"[ERRO] CSV não encontrado: {CSV_IN}", file=sys.stderr)
         return 1
 
-    rows, headers = read_csv(CSV_IN)
+    rows, headers, dialect = read_csv(CSV_IN)
 
-    # Colunas calculadas (não quebra seu painel; só adiciona)
+    # Colunas calculadas (mantém compatibilidade do seu painel)
     wanted_cols = [
         "dias_para_vencer",
-        "categoria_risco",
-        "alerta_30",
-        "alerta_60",
+        "status_prazo",          # CONFORTAVEL / ALERTA_180 / CRITICO_60 / VENCIDO / SEM DATA
         "alerta_180",
+        "alerta_60",
         "status_execucao_padrao",
-        "publicacao_doe"
+        "publicacao_doe",
     ]
     for c in wanted_cols:
         if c not in headers:
             headers.append(c)
 
-    prioridades: List[Dict[str, str]] = []
-    alertas30: List[Dict[str, str]] = []
-    alertas60: List[Dict[str, str]] = []
-    alertas180: List[Dict[str, str]] = []
+    prioridades = []
+    alertas180 = []
+    alertas60 = []
 
-    # contadores do relatório
-    count_critico = 0
-    count_execucao = 0
-    count_preparacao = 0
-    count_semdata = 0
-    count_vencido = 0
-    count_ok = 0
-    count_concluidos = 0
-    count_arquivados = 0
+    cont = {"CONFORTAVEL": 0, "ALERTA_180": 0, "CRITICO_60": 0, "VENCIDO": 0, "SEM DATA": 0}
+    menor_prazo = None  # (dias, identificacao)
 
     for r in rows:
         ensure_publicacao_doe(r)
-
-        # status execução padronizado (para seu botão “concluídos” no HTML, se quiser usar)
-        r["status_execucao_padrao"] = "CONCLUÍDO" if is_concluido(r) else "EM ANDAMENTO"
-        if is_concluido(r):
-            count_concluidos += 1
-
-        if is_arquivado(r):
-            count_arquivados += 1
-            # arquivado não entra nas filas de alerta
-            continue
 
         fim_raw = first(r, DATE_COLS_END)
         fim = parse_date_any(fim_raw)
         dias = days_to(fim, today)
 
         r["dias_para_vencer"] = "" if dias is None else str(dias)
-        r["categoria_risco"] = risco_categoria(dias)
-
-        r["alerta_30"] = "SIM" if (dias is not None and 0 <= dias <= 30) else "NÃO"
+        st = categoria_status(dias)
+        r["status_prazo"] = st
+        r["alerta_180"] = "SIM" if (dias is not None and 61 <= dias <= 180) else "NÃO"
         r["alerta_60"] = "SIM" if (dias is not None and 0 <= dias <= 60) else "NÃO"
-        r["alerta_180"] = "SIM" if (dias is not None and 0 <= dias <= 180) else "NÃO"
+        r["status_execucao_padrao"] = "CONCLUÍDO" if is_concluido(r) else "EM ANDAMENTO"
 
-        # contadores por categoria
-        cat = r["categoria_risco"]
-        if cat.startswith("CRÍTICO"):
-            count_critico += 1
-        elif cat.startswith("EXECUÇÃO"):
-            count_execucao += 1
-        elif cat.startswith("PREPARAÇÃO"):
-            count_preparacao += 1
-        elif cat == "SEM DATA":
-            count_semdata += 1
-        elif cat == "VENCIDO":
-            count_vencido += 1
-        elif cat.startswith("OK"):
-            count_ok += 1
+        cont[st] = cont.get(st, 0) + 1
+
+        # menor prazo útil (para referência de gestão)
+        ident = norm(r.get("identificacao", "")) or norm(r.get("Identificação", ""))
+        if dias is not None:
+            if (menor_prazo is None) or (dias < menor_prazo[0]):
+                menor_prazo = (dias, ident)
+
+        # ignora arquivados para filas
+        if is_arquivado(r):
+            continue
 
         prioridades.append(r)
-        if r["alerta_30"] == "SIM":
-            alertas30.append(r)
-        if r["alerta_60"] == "SIM":
-            alertas60.append(r)
         if r["alerta_180"] == "SIM":
             alertas180.append(r)
+        if r["alerta_60"] == "SIM":
+            alertas60.append(r)
 
-    def sort_key(r: Dict[str, str]) -> Tuple[int, str]:
+    def sort_key(r: Dict[str, str]):
         try:
             d = int(r.get("dias_para_vencer", "").strip())
         except Exception:
@@ -220,44 +200,30 @@ def main() -> int:
         return (d, ident)
 
     prioridades.sort(key=sort_key)
-    alertas30.sort(key=sort_key)
-    alertas60.sort(key=sort_key)
     alertas180.sort(key=sort_key)
+    alertas60.sort(key=sort_key)
 
     out_headers = headers[:]
 
-    # Saídas
-    write_csv(OUT_PRIORIDADES, prioridades, out_headers)
-    write_csv(OUT_ALERTA_30, alertas30, out_headers)
-    write_csv(OUT_ALERTA_60, alertas60, out_headers)
-    write_csv(OUT_ALERTA_180, alertas180, out_headers)
+    # arquivos (auditoria interna)
+    write_csv(OUT_PRIORIDADES, prioridades, out_headers, dialect)
+    write_csv(OUT_ALERTA_180, alertas180, out_headers, dialect)
+    write_csv(OUT_ALERTA_60, alertas60, out_headers, dialect)
 
     resumo = {
         "data_execucao": today.isoformat(),
-        "total_registros_csv": len(rows),
-        "ignorados_arquivados": count_arquivados,
-        "total_base_painel": len(prioridades),
-        "concluidos": count_concluidos,
-        "categorias": {
-            "preparacao_ate_180": count_preparacao,
-            "execucao_ate_60": count_execucao,
-            "critico_ate_30": count_critico,
-            "ok": count_ok,
-            "sem_data": count_semdata,
-            "vencido": count_vencido
-        },
-        "alertas": {
-            "alerta_180": len(alertas180),
-            "alerta_60": len(alertas60),
-            "alerta_30": len(alertas30)
-        }
+        "total_registros": len(rows),
+        "nao_arquivados": len(prioridades),
+        "contagens": cont,
+        "alerta_180_qtd": len(alertas180),
+        "critico_60_qtd": len(alertas60),
+        "menor_prazo_dias": None if menor_prazo is None else menor_prazo[0],
+        "menor_prazo_identificacao": None if menor_prazo is None else menor_prazo[1],
     }
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     OUT_LOG.write_text(json.dumps(resumo, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # Atualiza o CSV com colunas calculadas (opcional, mas você queria ver em Numbers/Excel)
-    write_csv(CSV_IN, rows, out_headers)
+    # Atualiza o CSV de entrada com colunas calculadas (mantém seu painel rico)
+    write_csv(CSV_IN, rows, out_headers, dialect)
 
     print("[OK] Monitoramento concluído:", json.dumps(resumo, ensure_ascii=False))
     return 0
