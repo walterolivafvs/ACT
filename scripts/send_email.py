@@ -6,18 +6,11 @@ import json
 import smtplib
 from email.message import EmailMessage
 from pathlib import Path
-from datetime import datetime
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-
 RESUMO = DATA / "resumo_execucao.json"
-ANEXOS = [
-    DATA / "prioridades.csv",
-    DATA / "alertas_180.csv",
-    DATA / "alertas_60.csv",
-    DATA / "alertas_30.csv",
-]
+
 
 def must_env(name: str) -> str:
     v = os.getenv(name, "").strip()
@@ -25,8 +18,27 @@ def must_env(name: str) -> str:
         raise SystemExit(f"[ERRO] Variável de ambiente ausente: {name}")
     return v
 
-def main():
-    # Secrets/ENV do GitHub Actions
+
+def fmt_bolinha(cor: str) -> str:
+    cor = (cor or "").lower()
+    if cor == "verde":
+        return "🟢"
+    if cor == "amarelo":
+        return "🟡"
+    if cor == "vermelho":
+        return "🔴"
+    return "⚪"
+
+
+def parse_int(d: dict, key: str, default: int = 0) -> int:
+    try:
+        return int((d or {}).get(key, default) or default)
+    except Exception:
+        return default
+
+
+def main() -> None:
+    # SMTP (GitHub Actions)
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "587").strip())
 
@@ -44,53 +56,69 @@ def main():
 
     resumo = json.loads(RESUMO.read_text(encoding="utf-8"))
 
-    data_exec = resumo.get("data_execucao", "")
+    data_exec = resumo.get("data_execucao", "").strip() or "N/D"
     cats = (resumo.get("categorias") or {})
     al = (resumo.get("alertas") or {})
 
-    preparacao = int(cats.get("preparacao_ate_180", 0))
-    execucao = int(cats.get("execucao_ate_60", 0))
-    critico = int(cats.get("critico_ate_30", 0))
-    ok = int(cats.get("ok", 0))
-    sem_data = int(cats.get("sem_data", 0))
-    vencido = int(cats.get("vencido", 0))
+    # NOVA LÓGICA (sem 30 dias):
+    # - confortável: >180d
+    # - alerta: 61–180d (amarelo)
+    # - crítico: ≤60d (vermelho)
+    confort = parse_int(cats, "ok", 0)
+    alerta180 = parse_int(al, "alerta_180", 0)
+    crit60 = parse_int(al, "alerta_60", 0)
 
-    total_base = int(resumo.get("total_base_painel", 0))
-    ignorados = int(resumo.get("ignorados_arquivados", 0))
-    concluidos = int(resumo.get("concluidos", 0))
+    sem_data = parse_int(cats, "sem_data", 0)
+    vencido = parse_int(cats, "vencido", 0)
 
-    alerta180 = int(al.get("alerta_180", 0))
-    alerta60 = int(al.get("alerta_60", 0))
-    alerta30 = int(al.get("alerta_30", 0))
+    total_base = int(resumo.get("total_base_painel", 0) or 0)
+    ignorados = int(resumo.get("ignorados_arquivados", 0) or 0)
+    concluidos = int(resumo.get("concluidos", 0) or 0)
 
-    # Assunto “executivo”
-    subject = f"Relatório mensal ACTs — {data_exec} | 180d:{alerta180} • 60d:{alerta60} • 30d:{alerta30}"
+    menor_d = resumo.get("menor_prazo_dias", None)
+    menor_id = (resumo.get("menor_prazo_identificacao", "") or "").strip()
 
-    body = f"""Relatório mensal de monitoramento de ACTs (execução automática)
+    # Assunto executivo (só 180/60)
+    subject = f"Monitoramento Mensal de ACTs/Convênios — {data_exec} | 180d:{alerta180} • 60d:{crit60}"
 
-Data de execução: {data_exec}
+    # Corpo formal (sem anexos)
+    linhas = []
+    linhas.append("Assunto: Monitoramento mensal de vigência de ACTs e Convênios")
+    linhas.append("")
+    linhas.append(f"Data de referência: {data_exec}")
+    linhas.append("")
+    linhas.append("Em cumprimento à rotina de monitoramento institucional das vigências dos instrumentos jurídicos vigentes, apresenta-se o seguinte panorama consolidado:")
+    linhas.append("")
+    linhas.append("BASE (sem arquivados):")
+    linhas.append(f"- Total na base do painel: {total_base}")
+    linhas.append(f"- Concluídos (marcados em status_execucao): {concluidos}")
+    linhas.append(f"- Ignorados (arquivados): {ignorados}")
+    linhas.append("")
+    linhas.append("SITUAÇÃO DOS PRAZOS DE VIGÊNCIA:")
+    linhas.append(f"{fmt_bolinha('verde')} Instrumentos em situação confortável (vigência superior a 180 dias): {confort}")
+    linhas.append(f"{fmt_bolinha('amarelo')} Instrumentos em alerta de atenção (vigência entre 61 e 180 dias): {alerta180}")
+    linhas.append(f"{fmt_bolinha('vermelho')} Instrumentos em situação crítica (vigência até 60 dias): {crit60}")
 
-BASE (sem arquivados):
-- Total na base do painel: {total_base}
-- Concluídos (marcados em status_execucao): {concluidos}
-- Ignorados (arquivados): {ignorados}
+    if vencido:
+        linhas.append(f"{fmt_bolinha('vermelho')} Instrumentos com vigência expirada: {vencido}")
+    if sem_data:
+        linhas.append(f"{fmt_bolinha('cinza')} Instrumentos sem registro válido de vigência: {sem_data}")
 
-GATILHOS DE GESTÃO (por prazo):
-- PREPARAÇÃO (≤180 dias): {preparacao}  | arquivo: alertas_180.csv
-- EXECUÇÃO (≤60 dias): {execucao}      | arquivo: alertas_60.csv
-- CRÍTICO (≤30 dias): {critico}        | arquivo: alertas_30.csv
+    if menor_d is not None:
+        try:
+            menor_d_int = int(menor_d)
+            linhas.append("")
+            linhas.append(f"Menor prazo identificado no período: {menor_d_int} dia(s) — {menor_id or 'Identificação não informada'}")
+        except Exception:
+            pass
 
-OUTROS:
-- OK (>180 dias): {ok}
-- SEM DATA: {sem_data}
-- VENCIDO: {vencido}
+    linhas.append("")
+    linhas.append("Os prazos acima são recalculados automaticamente a cada execução do sistema, com base na data corrente.")
+    linhas.append("Recomenda-se que os instrumentos enquadrados nas faixas de alerta sejam avaliados quanto à necessidade de prorrogação, renovação ou adoção das providências administrativas cabíveis.")
+    linhas.append("")
+    linhas.append("Relatório gerado automaticamente pelo sistema de monitoramento institucional.")
 
-Anexos:
-- prioridades.csv (ordenado por dias para vencer)
-- alertas_180.csv
-- alertas_60.csv
-- alertas_30.csv
-"""
+    body = "\n".join(linhas)
 
     msg = EmailMessage()
     msg["From"] = f"{from_name} <{smtp_user}>"
@@ -98,34 +126,15 @@ Anexos:
     msg["Subject"] = subject
     msg.set_content(body)
 
-    # anexos
-    for p in ANEXOS:
-        if not p.exists():
-            # não aborta: só avisa no corpo
-            msg.add_attachment(
-                f"[AVISO] Arquivo não encontrado: {p.name}\n".encode("utf-8"),
-                maintype="text",
-                subtype="plain",
-                filename=f"AVISO_{p.name}.txt",
-            )
-            continue
-
-        data = p.read_bytes()
-        msg.add_attachment(
-            data,
-            maintype="text",
-            subtype="csv",
-            filename=p.name
-        )
-
-    # envio SMTP (Gmail)
+    # Envio SMTP (Gmail)
     with smtplib.SMTP(smtp_host, smtp_port) as s:
         s.ehlo()
         s.starttls()
         s.login(smtp_user, smtp_pass)
         s.send_message(msg)
 
-    print("[OK] Email enviado para:", tos)
+    print("[OK] Email enviado (sem anexos) para:", tos)
+
 
 if __name__ == "__main__":
     main()
